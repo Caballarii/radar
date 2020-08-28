@@ -1,5 +1,6 @@
 package com.pgmmers.radar.service.impl.logs;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 
 import com.pgmmers.radar.dal.bean.EventQuery;
@@ -16,6 +17,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.index.query.RangeQueryBuilder;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.slf4j.Logger;
@@ -23,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
 import java.util.*;
 
 @Service
@@ -37,7 +40,7 @@ public class EventServiceImpl implements EventService {
     private ModelDal modelDal;
 
     @Override
-    public List<Object> query(EventQuery query) {
+    public List<Object> query(EventQuery query) throws IOException {
         List<Object> list = new ArrayList<>();
         ModelVO model = modelDal.getModelById(query.getModelId());
         String entityName = model.getEntityName();
@@ -64,12 +67,13 @@ public class EventServiceImpl implements EventService {
         }
 
         SearchHits hitsRet = searchService.search(
-                model.getGuid().toLowerCase(), "radar", queryMap, filterMap,
+                model.getGuid().toLowerCase(), queryMap, filterMap,
                 (query.getPageNo() - 1) * query.getPageSize(),
                 query.getPageSize());
         SearchHit[] hits = hitsRet.getHits();
         for (SearchHit hit : hits) {
-            String info = hit.sourceRef().toUtf8();
+            String info = hit.getSourceRef().utf8ToString();
+            list.add(JSONObject.parse(info));
             list.add(info);
         }
         return list;
@@ -97,8 +101,7 @@ public class EventServiceImpl implements EventService {
             query = QueryBuilders.termQuery(term.getFieldName(),
                     term.getFieldValue());
         }
-        QueryBuilder filter = null;
-        filter = QueryBuilders.rangeQuery("fields." + dateField)
+        RangeQueryBuilder filter = QueryBuilders.rangeQuery("fields."+dateField)
                 .from(beginTime.getTimeInMillis())
                 .to(endTime.getTimeInMillis());
         SearchHits hitsRet;
@@ -106,17 +109,18 @@ public class EventServiceImpl implements EventService {
         PageResult<Object> pageResult = null;
         try {
             hitsRet = searchService.search(model.getGuid().toLowerCase(),
-                    "radar", query, filter,
+                    query, filter,
                     (term.getPageNo() - 1) * term.getPageSize(),
                     term.getPageSize());
 
             hits = hitsRet.getHits();
             for (SearchHit hit : hits) {
-                String info = hit.sourceRef().toUtf8();
-                list.add(info);
+                //String info = hit.sourceRef().toUtf8();
+                String info = hit.getSourceRef().utf8ToString();
+                list.add(JSONObject.parse(info));
             }
             pageResult = new PageResult<>(term.getPageNo(),
-                    term.getPageSize(), (int) hitsRet.getTotalHits(), list);
+                    term.getPageSize(), (int) hitsRet.getTotalHits().value, list);
         } catch (Exception e) {
             logger.error("", e);
         }
@@ -161,7 +165,7 @@ public class EventServiceImpl implements EventService {
         // 创建第一种字体样式（用于列名）
         f.setFontHeightInPoints((short) 10);
         f.setColor(IndexedColors.BLACK.getIndex());
-        f.setBoldweight(Font.BOLDWEIGHT_BOLD);
+//        f.setBoldweight(Font.BOLDWEIGHT_BOLD);
 
         // 创建第二种字体样式（用于值）
         f2.setFontHeightInPoints((short) 10);
@@ -173,19 +177,19 @@ public class EventServiceImpl implements EventService {
 
         // 设置第一种单元格的样式（用于列名）
         cs.setFont(f);
-        cs.setBorderLeft(CellStyle.BORDER_THIN);
-        cs.setBorderRight(CellStyle.BORDER_THIN);
-        cs.setBorderTop(CellStyle.BORDER_THIN);
-        cs.setBorderBottom(CellStyle.BORDER_THIN);
-        cs.setAlignment(CellStyle.ALIGN_CENTER);
+//        cs.setBorderLeft(CellStyle.BORDER_THIN);
+//        cs.setBorderRight(CellStyle.BORDER_THIN);
+//        cs.setBorderTop(CellStyle.BORDER_THIN);
+//        cs.setBorderBottom(CellStyle.BORDER_THIN);
+//        cs.setAlignment(CellStyle.ALIGN_CENTER);
 
         // 设置第二种单元格的样式（用于值）
         cs2.setFont(f2);
-        cs2.setBorderLeft(CellStyle.BORDER_THIN);
-        cs2.setBorderRight(CellStyle.BORDER_THIN);
-        cs2.setBorderTop(CellStyle.BORDER_THIN);
-        cs2.setBorderBottom(CellStyle.BORDER_THIN);
-        cs2.setAlignment(CellStyle.ALIGN_CENTER);
+//        cs2.setBorderLeft(CellStyle.BORDER_THIN);
+//        cs2.setBorderRight(CellStyle.BORDER_THIN);
+//        cs2.setBorderTop(CellStyle.BORDER_THIN);
+//        cs2.setBorderBottom(CellStyle.BORDER_THIN);
+//        cs2.setAlignment(CellStyle.ALIGN_CENTER);
         // 设置列名
         for (int i = 0; i < titleList4Field.size(); i++) {
             Cell cell = row.createCell(i);

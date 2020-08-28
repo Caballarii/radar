@@ -2,22 +2,38 @@ package com.pgmmers.radar.controller;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-
+import com.fasterxml.jackson.databind.JsonNode;
 import com.pgmmers.radar.dal.bean.ActivationQuery;
 import com.pgmmers.radar.enums.FieldType;
-import com.pgmmers.radar.enums.PluginType;
 import com.pgmmers.radar.service.common.CommonResult;
+import com.pgmmers.radar.service.engine.PluginServiceV2;
 import com.pgmmers.radar.service.engine.vo.DataColumnInfo;
 import com.pgmmers.radar.service.enums.DataType;
-import com.pgmmers.radar.service.model.*;
-import com.pgmmers.radar.vo.model.*;
+import com.pgmmers.radar.service.impl.engine.Plugin.PluginManager;
+import com.pgmmers.radar.service.model.AbstractionService;
+import com.pgmmers.radar.service.model.ActivationService;
+import com.pgmmers.radar.service.model.FieldService;
+import com.pgmmers.radar.service.model.PreItemService;
+import com.pgmmers.radar.service.model.RuleService;
+import com.pgmmers.radar.vo.model.AbstractionVO;
+import com.pgmmers.radar.vo.model.ActivationVO;
+import com.pgmmers.radar.vo.model.FieldVO;
+import com.pgmmers.radar.vo.model.PreItemVO;
+import com.pgmmers.radar.vo.model.RuleVO;
 import io.swagger.annotations.Api;
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
-
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/services/v1/activation")
 @Api(value = "ActivationApi", description = "策略集管理相关操作",  tags = {"策略集API"})
@@ -66,18 +82,17 @@ public class ActivationApiController {
         ds = new DataColumnInfo(DataType.PREITEMS.getDesc(), DataType.PREITEMS.getName());
         List<PreItemVO> listPreItem = preItemService.listPreItem(modelId);
         for (PreItemVO preItem : listPreItem) {
-            PluginType pt = PluginType.get(preItem.getPlugin());
-            if (StringUtils.isNoneBlank(pt.getType())) {
+            PluginServiceV2 pt= PluginManager.pluginServiceMap().get(preItem.getPlugin());
+            if (StringUtils.isNotEmpty(pt.getType()) && pt.getType().equals("JSON")) {
+                //load  http request data
+                JsonNode json = preItem.getConfigJson();
+                List<DataColumnInfo> children = new ArrayList<>();
+                extractMetaColumn(ds, preItem, json.toString(), children);
+            } else if (StringUtils.isNotEmpty(pt.getType())) {
                 ds.addChildren(preItem.getLabel(), preItem.getDestField(), pt.getType());
             } else {
                 List<DataColumnInfo> children = new ArrayList<>();
-                JSONArray array = JSONArray.parseArray(pt.getMeta());
-                for (int i = 0; i < array.size(); i++) {
-                    JSONObject obj = array.getJSONObject(i);
-                    children.add(new DataColumnInfo(obj.getString("title"), obj.getString("column"), obj
-                            .getString("type")));
-                }
-                ds.addChildren(preItem.getLabel(), preItem.getDestField(), children);
+                extractMetaColumn(ds, preItem, pt.getMeta(), children);
             }
         }
         list.add(ds);
@@ -99,6 +114,22 @@ public class ActivationApiController {
         return result;
     }
 
+    @GetMapping("/absColumns/{modelId}")
+    public CommonResult getAbstractionColumns(@PathVariable Long modelId) {
+        CommonResult result = new CommonResult();
+        result.setSuccess(true);
+        List<AbstractionVO> listAbstract = abstractionService.listAbstraction(modelId);
+        DataColumnInfo ds = new DataColumnInfo(DataType.ABSTRACTIONS.getDesc(), DataType.ABSTRACTIONS.getName());
+        if (listAbstract != null) {
+            for (AbstractionVO abs : listAbstract) {
+                ds.addChildren(abs.getLabel(), abs.getName(), FieldType.DOUBLE.name());
+            }
+        }
+
+        result.getData().put("columns", ds.getChildren());
+        return result;
+    }
+
     @GetMapping("/rulecolumns/{modelId}")
 	public CommonResult getRuleColumns(@PathVariable Long modelId) {
 		List<DataColumnInfo> list = new ArrayList<>();
@@ -113,7 +144,7 @@ public class ActivationApiController {
 				list.add(ds);
 			}
 		}
-		
+
 		CommonResult result = new CommonResult();
         result.setSuccess(true);
         result.getData().put("list", list);
@@ -133,5 +164,15 @@ public class ActivationApiController {
 	@PostMapping("/updateOrder")
 	public CommonResult updateOrder(@RequestParam Long activationId, @RequestParam String ruleOrder) {
 		return activationService.updateOrder(activationId,ruleOrder);
-	}   
+	}
+
+    private void extractMetaColumn(DataColumnInfo ds, PreItemVO preItem, String jsonStr, List<DataColumnInfo> children) {
+        JSONArray array = JSONArray.parseArray(jsonStr);
+        for (int i = 0; i < array.size(); i++) {
+            JSONObject obj = array.getJSONObject(i);
+            children.add(new DataColumnInfo(obj.getString("title"), obj.getString("column"), obj
+                    .getString("type")));
+        }
+        ds.addChildren(preItem.getLabel(), preItem.getDestField(), children);
+    }
 }

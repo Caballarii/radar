@@ -5,28 +5,52 @@ import com.pgmmers.radar.enums.AggregateType;
 import com.pgmmers.radar.enums.FieldType;
 import com.pgmmers.radar.enums.Operator;
 import com.pgmmers.radar.enums.StatusType;
+import com.pgmmers.radar.service.dnn.Estimator;
 import com.pgmmers.radar.service.engine.AggregateCommand;
 import com.pgmmers.radar.service.engine.AntiFraudEngine;
-import com.pgmmers.radar.service.engine.vo.*;
-import com.pgmmers.radar.service.model.*;
+import com.pgmmers.radar.service.engine.vo.AbstractionResult;
+import com.pgmmers.radar.service.engine.vo.ActivationResult;
+import com.pgmmers.radar.service.engine.vo.AdaptationResult;
+import com.pgmmers.radar.service.engine.vo.HitObject;
+import com.pgmmers.radar.service.engine.vo.RiskObject;
+import com.pgmmers.radar.service.impl.dnn.EstimatorContainer;
+import com.pgmmers.radar.service.model.AbstractionService;
+import com.pgmmers.radar.service.model.ActivationService;
+import com.pgmmers.radar.service.model.DataListsService;
+import com.pgmmers.radar.service.model.EntityService;
+import com.pgmmers.radar.service.model.FieldService;
+import com.pgmmers.radar.service.model.ModelService;
+import com.pgmmers.radar.service.model.RuleService;
 import com.pgmmers.radar.util.DateUtils;
 import com.pgmmers.radar.util.GroovyScriptUtil;
-import com.pgmmers.radar.vo.model.*;
+import com.pgmmers.radar.vo.model.AbstractionVO;
+import com.pgmmers.radar.vo.model.ActivationVO;
+import com.pgmmers.radar.vo.model.DataListRecordVO;
+import com.pgmmers.radar.vo.model.DataListsVO;
+import com.pgmmers.radar.vo.model.FieldVO;
+import com.pgmmers.radar.vo.model.ModelVO;
+import com.pgmmers.radar.vo.model.RuleVO;
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-
-import java.math.BigDecimal;
-import java.util.*;
 
 @Service
 public class AntiFraudEngineImpl implements AntiFraudEngine {
     private static Logger logger = LoggerFactory.getLogger(AntiFraudEngineImpl.class);
 
     private static Map<Long, Map<String, Object>> dataListCacheMap = new HashMap<Long, Map<String, Object>>();
-
+    @Value("${sys.conf.machine-learning: true}")
+    private boolean machineLearning;
     @Autowired
     private EntityService entityService;
 
@@ -51,13 +75,16 @@ public class AntiFraudEngineImpl implements AntiFraudEngine {
     @Autowired
     private RuleService ruleService;
 
+    @Autowired
+    private EstimatorContainer estimatorContainer;
+
     @Override
     public AbstractionResult executeAbstraction(Long modelId, Map<String, Map<String, ?>> data) {
         AbstractionResult result = new AbstractionResult();
         // 1. 解析 参数信息
         //JSONObject entity = (JSONObject) data.get("entity");
 
-        // 2. list abstraction 
+        // 2. list abstraction
         List<AbstractionVO> abstractions = abstractionService.listAbstraction(modelId);
 
         // 排除没有的定义 abstraction 的情况。
@@ -206,9 +233,9 @@ public class AntiFraudEngineImpl implements AntiFraudEngine {
     }
 
     /**
-     * 
+     *
      * 后续需要优化.delete from next version
-     * 
+     *
      * @param modelId
      * @return
      * @author feihu.wang
@@ -243,9 +270,16 @@ public class AntiFraudEngineImpl implements AntiFraudEngine {
     @Override
     public AdaptationResult executeAdaptation(Long modelId, Map<String, Map<String, ?>> data) {
         AdaptationResult result = new AdaptationResult();
-        // TODO Auto-generated method stub
+//      启动机器学习
+        if (machineLearning){
+            Estimator estimator = estimatorContainer.getByModelId(modelId);
+            if(estimator != null) {
+                float score = estimator.predict(modelId, data);
+                result.getAdaptationMap().put("score", score);
+            }
+        }
         result.setSuccess(true);
-        data.put("adapations", new HashMap<String, Object>());
+        data.put("adaptations", result.getAdaptationMap());
         return result;
     }
 
@@ -255,7 +289,7 @@ public class AntiFraudEngineImpl implements AntiFraudEngine {
         List<ActivationVO> activations = activationService.listActivation(modelId);
         // 获取预加载的黑/白名单集合
         Map<String, Object> dataCollectionMap = dataListsService.getDataListMap(modelId);
-        
+
         for (ActivationVO act : activations) {
             if (!act.getStatus().equals(StatusType.ACTIVE.getKey())) {
                 continue;
@@ -338,9 +372,9 @@ public class AntiFraudEngineImpl implements AntiFraudEngine {
     }
 
     /**
-     * 
+     *
      * 检查数据是否符合条件.
-     * 
+     *
      * @param ruleScript string
      * @param entity map of params
      * @param dataCollectionMap like black list

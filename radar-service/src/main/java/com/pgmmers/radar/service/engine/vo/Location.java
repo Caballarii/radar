@@ -1,15 +1,17 @@
 package com.pgmmers.radar.service.engine.vo;
 
+import java.util.StringJoiner;
+
 public class Location {
 
     private String country = "中国";
-    
+
     private String region = "";
-    
-    private String provice = "";
-    
+
+    private String province = "";
+
     private String city = "";
-    
+
     private String address = "";
 
     public String getCountry() {
@@ -28,12 +30,12 @@ public class Location {
         this.region = region;
     }
 
-    public String getProvice() {
-        return provice;
+    public String getProvince() {
+        return province;
     }
 
-    public void setProvice(String provice) {
-        this.provice = provice;
+    public void setProvince(String province) {
+        this.province = province;
     }
 
     public String getCity() {
@@ -51,7 +53,16 @@ public class Location {
     public void setAddress(String address) {
         this.address = address;
     }
-    
-    
-    
+
+
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", Location.class.getSimpleName() + "[", "]")
+                .add("country='" + country + "'")
+                .add("region='" + region + "'")
+                .add("province='" + province + "'")
+                .add("city='" + city + "'")
+                .add("address='" + address + "'")
+                .toString();
+    }
 }

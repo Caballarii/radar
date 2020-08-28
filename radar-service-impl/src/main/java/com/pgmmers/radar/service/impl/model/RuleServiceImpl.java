@@ -14,8 +14,10 @@ import com.pgmmers.radar.service.cache.SubscribeHandle;
 import com.pgmmers.radar.service.common.CommonResult;
 import com.pgmmers.radar.service.model.RuleService;
 import com.pgmmers.radar.service.search.SearchEngineService;
+import com.pgmmers.radar.util.GroovyScriptUtil;
 import com.pgmmers.radar.vo.model.*;
 import org.apache.commons.lang3.StringUtils;
+import org.elasticsearch.index.query.QueryBuilders;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,10 +27,15 @@ import javax.annotation.PostConstruct;
 import java.util.*;
 
 @Service
-public class RuleServiceImpl implements RuleService, SubscribeHandle {
+public class RuleServiceImpl extends BaseLocalCacheService implements RuleService, SubscribeHandle {
 
     public static Logger logger = LoggerFactory
             .getLogger(RuleServiceImpl.class);
+
+    @Override
+    public Object query(Long activationId) {
+        return modelDal.listRules(null, activationId, null);
+    }
 
     @Autowired
     private ModelDal modelDal;
@@ -43,7 +50,7 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
     @Autowired
     private SearchEngineService searchService;
 
-    public Map<Long, List<RuleVO>> contextMap = new HashMap<Long, List<RuleVO>>();
+    public Map<Long, List<RuleVO>> contextMap = new HashMap<>();
 
     public List<RuleVO> listRule(Long modelId, Long activationId, Integer status) {
         return modelDal.listRules(modelId, activationId, status);
@@ -51,12 +58,8 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
 
     @Override
     public List<RuleVO> listRule(Long activationId) {
-        List<RuleVO> list = contextMap.get(activationId);
-        if (list == null) {
-            list = modelDal.listRules(null, activationId, null);
-            contextMap.put(activationId, list);
-        }
-        return list;
+        //noinspection unchecked
+        return (List<RuleVO>) getByCache(activationId);
     }
 
     @Override
@@ -64,9 +67,7 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
         logger.info("rule sub:{}", message);
         RuleVO rule = JSON.parseObject(message, RuleVO.class);
         if (rule != null) {
-            List<RuleVO> list = modelDal.listRules(null,
-                    rule.getActivationId(), null);
-            contextMap.put(rule.getActivationId(), list);
+            invalidateCache(rule.getActivationId());
         }
     }
 
@@ -79,7 +80,7 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
     public CommonResult query(RuleQuery query) {
         CommonResult result = new CommonResult();
         ActivationVO activation = activationDal.get(query.getActivationId());
-        
+
         result.setSuccess(true);
         result.getData().put("ruleOrder", activation.getRuleOrder());
         result.getData().put("page", ruleDal.query(query));
@@ -89,6 +90,13 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
     @Override
     public CommonResult save(RuleVO rule,String merchantCode) {
         CommonResult result = new CommonResult();
+        if (rule.getId() != null) {
+            RuleVO oldRule = ruleDal.get(rule.getId());
+            // 如果规则有更新，以前的编译好的groovy 对象用不到了，应该删除。
+            if (!oldRule.getScripts().equals(rule.getScripts())) {
+                GroovyScriptUtil.removeInactiveScript(oldRule.getScripts());
+            }
+        }
         int count = ruleDal.save(rule);
         if (count > 0) {
         	if(StringUtils.isEmpty(rule.getName())){
@@ -97,7 +105,7 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
         	}
             result.getData().put("id", rule.getId());
             result.setSuccess(true);
-            
+
             // 存储History
             RuleHistoryVO ruleHistoryVO=new RuleHistoryVO();
             ruleHistoryVO.setRuleId(rule.getId());
@@ -111,7 +119,7 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
             ruleHistoryVO.setRuleDefinition(rule.getRuleDefinition().asText());
             ruleHistoryVO.setUpdateTime(rule.getUpdateTime());
             ruleDal.saveHistory(ruleHistoryVO);
-            
+
             // 通知更新
             cacheService.publishRule(rule);
         }
@@ -123,7 +131,7 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
         CommonResult result = new CommonResult();
         RuleVO rule = ruleDal.get(id[0]);
         int count = ruleDal.delete(id);
-        if (count > 0) {       	
+        if (count > 0) {
             result.setSuccess(true);
             // 通知更新
             cacheService.publishRule(rule);
@@ -139,11 +147,13 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
     @Override
     public CommonResult getHitSorts(Long modelId) {
         CommonResult result = new CommonResult();
-        Set<RuleHitsVO> treeSet = new TreeSet<RuleHitsVO>();
+        Set<RuleHitsVO> treeSet = new TreeSet<>();
         ModelVO model = modelDal.getModelById(modelId);
-        String elaQuery = "{\"query\":{\"term\":{\"hitsDetail.${activationName}.rule_${ruleId}.key\":\"${ruleId}\"}}}";
+        String keyTempl = "hitsDetail.${activationName}.rule_${ruleId}.key";
         ActivationQuery actQuery = new ActivationQuery();
         actQuery.setModelId(modelId);
+        // page size default is 10.
+        actQuery.setPageSize(100);
         PageResult<ActivationVO> actResult = activationDal.query(actQuery);
         List<ActivationVO> actList = actResult.getList();
         for (ActivationVO act : actList) {
@@ -153,20 +163,17 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
             PageResult<RuleVO> page = ruleDal.query(query);
             List<RuleVO> list = page.getList();
             for (RuleVO rule : list) {
-                String tmpQuery = elaQuery.replace("${activationName}",
-                        act.getActivationName());
-                tmpQuery = tmpQuery.replace("${ruleId}", rule.getId() + "");
+                String keyStr = keyTempl.replace("${activationName}", act.getActivationName());
+
+                keyStr = keyStr.replace("${ruleId}", rule.getId() + "");
                 long qty = 0;
                 try {
                     qty = searchService.count(model.getGuid().toLowerCase(),
-                            "radar", tmpQuery, null);
+                            QueryBuilders.termQuery(keyStr,rule.getId() + ""), null);
                 } catch (Exception e) {
                     logger.error("search error", e);
-                    qty = 0;
                 }
-                if (qty <= 0) {
-                    continue;
-                } else {
+                if (qty > 0){
                     RuleHitsVO hit = new RuleHitsVO();
                     hit.setId(rule.getId());
                     hit.setActivationName(act.getActivationName());
@@ -186,7 +193,7 @@ public class RuleServiceImpl implements RuleService, SubscribeHandle {
 	@Override
 	public CommonResult queryHistory(RuleHistoryQuery query) {
 		CommonResult result = new CommonResult();
-        
+
         result.setSuccess(true);
         result.getData().put("page", ruleDal.queryHistory(query));
         return result;
