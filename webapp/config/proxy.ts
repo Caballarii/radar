@@ -8,7 +8,7 @@
 export default {
   dev: {
     '/services/v1/': {
-      target: 'http://192.168.86.137:8080/',
+      target: 'http://192.168.86.137:6580/',
       changeOrigin: true,
       pathRewrite: { '^': '' },
     },

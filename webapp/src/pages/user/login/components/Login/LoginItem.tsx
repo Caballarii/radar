@@ -1,5 +1,5 @@
 import { Button, Col, Input, Row, Form, message } from 'antd';
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, SetStateAction, Dispatch } from 'react';
 import omit from 'omit.js';
 import { FormItemProps } from 'antd/es/form/FormItem';
 
@@ -12,7 +12,6 @@ export type LoginItemKeyType = keyof typeof ItemMap;
 export interface LoginItemType {
   UserName: React.FC<WrappedLoginItemProps>;
   Password: React.FC<WrappedLoginItemProps>;
-  Mobile: React.FC<WrappedLoginItemProps>;
   Captcha: React.FC<WrappedLoginItemProps>;
 }
 
@@ -30,6 +29,9 @@ export interface LoginItemProps extends Partial<FormItemProps> {
   customProps?: { [key: string]: unknown };
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   tabUtil?: LoginContextProps['tabUtil'];
+
+  uuid?: string,
+  setuuid?: ()=>void
 }
 
 const FormItem = Form.Item;
@@ -39,6 +41,8 @@ const getFormItemOptions = ({
   defaultValue,
   customProps = {},
   rules,
+  uuid,
+  setuuid
 }: LoginItemProps) => {
   const options: {
     rules?: LoginItemProps['rules'];
@@ -57,9 +61,7 @@ const getFormItemOptions = ({
 };
 
 const LoginItem: React.FC<LoginItemProps> = (props) => {
-  const [count, setCount] = useState<number>(props.countDown || 0);
-  const [timing, setTiming] = useState(false);
-  // 这么写是为了防止restProps中 带入 onChange, defaultValue, rules props tabUtil
+  
   const {
     onChange,
     customProps,
@@ -74,24 +76,6 @@ const LoginItem: React.FC<LoginItemProps> = (props) => {
     ...restProps
   } = props;
 
-  useEffect(() => {
-    let interval: number = 0;
-    const { countDown } = props;
-    if (timing) {
-      interval = window.setInterval(() => {
-        setCount((preSecond) => {
-          if (preSecond <= 1) {
-            setTiming(false);
-            clearInterval(interval);
-            // 重置秒数
-            return countDown || 60;
-          }
-          return preSecond - 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [timing]);
   if (!name) {
     return null;
   }
@@ -100,29 +84,19 @@ const LoginItem: React.FC<LoginItemProps> = (props) => {
   const otherProps = restProps || {};
 
   if (type === 'Captcha') {
-    const inputProps = omit(otherProps, ['onGetCaptcha', 'countDown']);
+    const inputProps = omit(otherProps, ['uuid', 'setuuid']);
 
     return (
       <FormItem shouldUpdate noStyle>
         {({ getFieldValue }) => (
           <Row gutter={8}>
-            <Col span={16}>
+            <Col span={12}>
               <FormItem name={name} {...options}>
                 <Input {...customProps} {...inputProps} />
               </FormItem>
             </Col>
-            <Col span={8}>
-              <img src="/services/v1/common/getCaptcha" alt="获取验证码"/>
-              {/* <Button
-                disabled={timing}
-                className={styles.getCaptcha}
-                size="large"
-                onClick={() => {
-                  const value = getFieldValue('mobile');
-                }}
-              >
-                {timing ? `${count} 秒` : '获取验证码'}
-              </Button> */}
+            <Col span={12}>
+              <img onClick={()=>props.setuuid&&props.setuuid} style={{width:185,height:39.8}} src={`/services/v1/common/getCaptcha?rd=${props.uuid}`} alt="获取验证码"/>
             </Col>
           </Row>
         )}

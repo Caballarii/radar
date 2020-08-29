@@ -6,8 +6,8 @@ import { setAuthority } from '@/utils/authority';
 import { getPageQuery } from '@/utils/utils';
 
 export interface StateType {
-  status?: 'ok' | 'error';
-  type?: string;
+  success?: boolean;
+  msg?: string;
   currentAuthority?: 'user' | 'guest' | 'admin';
 }
 
@@ -27,7 +27,7 @@ const Model: LoginModelType = {
   namespace: 'login',
 
   state: {
-    status: undefined,
+    success: undefined,
   },
 
   effects: {
@@ -38,7 +38,7 @@ const Model: LoginModelType = {
         payload: response,
       });
       // Login successfully
-      if (response.status === 'ok') {
+      if (response.success) {
         const urlParams = new URL(window.location.href);
         const params = getPageQuery();
         let { redirect } = params as { redirect: string };
@@ -77,8 +77,8 @@ const Model: LoginModelType = {
       setAuthority(payload.currentAuthority);
       return {
         ...state,
-        status: payload.status,
-        type: payload.type,
+        success: payload.success,
+        msg: payload.msg
       };
     },
   },
