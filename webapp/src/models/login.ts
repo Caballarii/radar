@@ -2,7 +2,7 @@ import { stringify } from 'querystring';
 import { history, Reducer, Effect } from 'umi';
 
 import { login } from '@/services/login';
-import { setAuthority } from '@/utils/authority';
+import { setAuthority, getAuthority } from '@/utils/authority';
 import { getPageQuery } from '@/utils/utils';
 
 export interface StateType {
@@ -39,6 +39,8 @@ const Model: LoginModelType = {
       });
       // Login successfully
       if (response.success) {
+        sessionStorage.setItem("token",response.data["x-auth-token"]);
+
         const urlParams = new URL(window.location.href);
         const params = getPageQuery();
         let { redirect } = params as { redirect: string };
@@ -74,7 +76,8 @@ const Model: LoginModelType = {
 
   reducers: {
     changeLoginStatus(state, { payload }) {
-      setAuthority(payload.currentAuthority);
+      //setAuthority(payload.currentAuthority);
+      setAuthority("admin");
       return {
         ...state,
         success: payload.success,

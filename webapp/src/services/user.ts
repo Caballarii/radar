@@ -5,7 +5,8 @@ export async function query(): Promise<any> {
 }
 
 export async function queryCurrent(): Promise<any> {
-  return request('/merchant/currentUser');
+  //console.log(sessionStorage.getItem("token"));
+  return request('/merchant/current');
 }
 
 export async function queryNotices(): Promise<any> {

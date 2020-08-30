@@ -54,4 +54,21 @@ const request = extend({
   credentials: 'include', // 默认请求是否带上cookie
 });
 
+request.interceptors.request.use((url, options) => {
+  let token = sessionStorage.getItem("token");
+  const headers = {
+  };
+
+  if (token) {
+    headers['x-auth-token'] = token;
+  } 
+
+  return (
+    {
+      url: url,
+      options: { ...options, headers: headers },
+    }
+  );
+})
+
 export default request;
