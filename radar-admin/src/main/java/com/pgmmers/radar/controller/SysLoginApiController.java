@@ -90,7 +90,16 @@ public class SysLoginApiController {
         tokenService.addTokenBlacklist(accessToken);
         ret.setSuccess(true);
         return ret;
-	}
+    }
+
+    @GetMapping("/merchant/current")
+    public CommonResult current(){
+        CommonResult ret = new CommonResult();
+        String name=contextHolder.getContext().getUsername();
+        ret.getData().put("name",name);
+        ret.setSuccess(true);
+        return ret;
+    }
 
     /**
      * 注册接口
